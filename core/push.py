@@ -82,6 +82,24 @@ def _qmsg_push(title: str, content: str, config: dict) -> bool:
 
 # ========== 公共接口 ==========
 
+def _fetch_hitokoto() -> str:
+    """获取一条一言（随机句子）。
+
+    Returns:
+        句子 + 出处，失败时返回空字符串。
+    """
+    try:
+        resp = requests.get("https://v1.hitokoto.cn/", timeout=10)
+        data = resp.json()
+        hitokoto = data.get("hitokoto", "")
+        source = data.get("from", "")
+        if hitokoto:
+            return f"{hitokoto}    ----{source}"
+    except Exception:
+        logger.debug("获取一言失败", exc_info=True)
+    return ""
+
+
 def send(title: str, content: str, config: dict = None) -> None:
     """推送消息到所有已配置的渠道。
 
@@ -96,6 +114,13 @@ def send(title: str, content: str, config: dict = None) -> None:
     if not content:
         logger.warning("推送内容为空，跳过推送")
         return
+
+    # 启用一言时追加到正文末尾
+    if config.get("hitokoto"):
+        quote = _fetch_hitokoto()
+        if quote:
+            content += f"\n\n{quote}"
+            logger.debug("已追加一言: %s", quote[:30])
 
     if not _channels:
         logger.warning("无可用推送渠道")
