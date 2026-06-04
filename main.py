@@ -56,20 +56,23 @@ def main():
     logger.info("===== 远行商人查询开始 =====")
 
     # 1. 加载配置
-    logger.info("加载配置...")
+    t0 = time.time()
     cfg = load_config()
     api_url, api_key = get_api_config(cfg)
     push_cfg = get_push_config(cfg)
-    logger.info("配置加载完成，API 地址: %s", api_url)
+    logger.info("配置加载完成（%.0fms），API 地址: %s",
+                (time.time() - t0) * 1000, api_url)
 
     # 2. 获取数据
+    t0 = time.time()
     logger.info("获取 API 数据...")
     try:
         raw = fetch_merchant_data(api_url, api_key)
     except Exception as e:
-        logger.exception("API 请求失败")
+        logger.exception("API 请求失败（%.0fms）", (time.time() - t0) * 1000)
         send(f"{push_cfg['title']} ⚠️ 监控异常", f"请求失败: {e}", push_cfg)
         return
+    logger.info("API 请求完成（%.0fms）", (time.time() - t0) * 1000)
 
     if raw.get("code") != 0:
         logger.error("API 返回错误: code=%s, message=%s",
@@ -88,18 +91,22 @@ def main():
         return
 
     # 3. 解析处理
+    t0 = time.time()
     logger.info("解析数据...")
     processed = process_merchant_data(data)
     product_count = processed.get("product_count", 0)
-    logger.info("解析完成，活跃商品: %d 个", product_count)
+    logger.info("解析完成（%.0fms），活跃商品: %d 个",
+                (time.time() - t0) * 1000, product_count)
 
     # 4. 组装内容并推送
+    t0 = time.time()
     body = build_message(processed)
     logger.info("推送消息...")
     send(push_cfg["title"], body, push_cfg)
+    logger.info("推送完成（%.0fms）", (time.time() - t0) * 1000)
 
     elapsed = (time.time() - start_ts) * 1000
-    logger.info("===== 查询完成，耗时 %.0fms =====", elapsed)
+    logger.info("===== 查询完成，总耗时 %.0fms =====", elapsed)
 
 
 if __name__ == "__main__":

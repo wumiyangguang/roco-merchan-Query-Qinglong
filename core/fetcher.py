@@ -6,13 +6,13 @@ import requests
 logger = logging.getLogger(__name__)
 
 
-def fetch_merchant_data(api_url: str, api_key: str, timeout: int = 30) -> dict:
+def fetch_merchant_data(api_url: str, api_key: str, timeout=(5, 15)) -> dict:
     """获取远行商人 API 数据。
 
     Args:
         api_url: API 地址
         api_key: X-API-Key 鉴权密钥
-        timeout: 请求超时秒数
+        timeout: (连接超时, 读取超时) 秒数
 
     Returns:
         {"code": int, "message": str, "data": dict}
@@ -20,7 +20,7 @@ def fetch_merchant_data(api_url: str, api_key: str, timeout: int = 30) -> dict:
     Raises:
         requests.RequestException: 网络/HTTP 错误
     """
-    logger.debug("请求 API: %s，超时 %ds", api_url, timeout)
+    logger.debug("请求 API: %s，超时 连接%ds/读取%ds", api_url, timeout[0], timeout[1])
 
     try:
         resp = requests.get(
@@ -35,7 +35,8 @@ def fetch_merchant_data(api_url: str, api_key: str, timeout: int = 30) -> dict:
                      data.get("code"), data.get("message"))
         return data
     except requests.Timeout:
-        logger.error("API 请求超时（%ds）: %s", timeout, api_url)
+        logger.error("API 请求超时（连接%ds/读取%ds）: %s",
+                     timeout[0], timeout[1], api_url)
         raise
     except requests.ConnectionError:
         logger.error("无法连接 API 服务器: %s", api_url)
