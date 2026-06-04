@@ -16,14 +16,8 @@
         # ... 推送逻辑 ...
         return True
 """
-import base64
-import concurrent.futures
-import hashlib
-import hmac
 import json
 import logging
-import time as _time
-import urllib.parse
 
 import requests
 
@@ -80,247 +74,6 @@ def _qmsg_push(title: str, content: str, config: dict) -> bool:
         return False
 
 
-@register_channel
-def _pushplus_push(title: str, content: str, config: dict) -> bool:
-    """PushPlus（push+ 微信推送）。
-
-    配置项：push.pushplus_token / push.pushplus_topic（可选）
-    文档：https://www.pushplus.plus
-    """
-    token = config.get("pushplus_token", "")
-    if not token:
-        return False
-
-    url = "http://www.pushplus.plus/send"
-    body = {
-        "token": token,
-        "title": title,
-        "content": content,
-        "topic": config.get("pushplus_topic", ""),
-    }
-    logger.debug("PushPlus 推送 -> token=%s...", token[:8])
-
-    try:
-        resp = requests.post(url, json=body, timeout=(5, 10))
-        data = resp.json()
-    except requests.RequestException:
-        logger.exception("PushPlus 推送网络异常")
-        return False
-    except json.JSONDecodeError:
-        logger.error("PushPlus 响应解析失败: %s", resp.text[:200])
-        return False
-
-    if data.get("code") == 200:
-        logger.info("PushPlus 推送成功")
-        return True
-
-    # 兜底旧域名
-    try:
-        resp2 = requests.post("http://pushplus.hxtrip.com/send", json=body, timeout=(5, 10))
-        data2 = resp2.json()
-        if data2.get("code") == 200:
-            logger.info("PushPlus(hxtrip) 推送成功")
-            return True
-    except Exception:
-        pass
-
-    logger.error("PushPlus 推送失败: %s", data)
-    return False
-
-
-@register_channel
-def _server_chan_push(title: str, content: str, config: dict) -> bool:
-    """Server酱（微信推送）。
-
-    配置项：push.server_key
-    文档：https://sct.ftqq.com
-    """
-    key = config.get("server_key", "")
-    if not key:
-        return False
-
-    # SCT 开头的 key 使用新域名
-    if key.upper().startswith("SCT"):
-        url = f"https://sctapi.ftqq.com/{key}.send"
-    else:
-        url = f"https://sc.ftqq.com/{key}.send"
-
-    data = {"text": title, "desp": content.replace("\n", "\n\n")}
-    logger.debug("Server酱 推送")
-
-    try:
-        resp = requests.post(url, data=data, timeout=(5, 10))
-        result = resp.json()
-    except requests.RequestException:
-        logger.exception("Server酱 推送网络异常")
-        return False
-    except json.JSONDecodeError:
-        logger.error("Server酱 响应解析失败: %s", resp.text[:200])
-        return False
-
-    if result.get("errno") == 0 or result.get("code") == 0:
-        logger.info("Server酱 推送成功")
-        return True
-    else:
-        logger.error("Server酱 推送失败: %s", result)
-        return False
-
-
-@register_channel
-def _bark_push(title: str, content: str, config: dict) -> bool:
-    """Bark（iOS 推送）。
-
-    配置项：push.bark_key / push.bark_server（可选，自建服务地址）
-    文档：https://github.com/Finb/Bark
-    """
-    key = config.get("bark_key", "")
-    if not key:
-        return False
-
-    server = config.get("bark_server", "")
-    if server:
-        url = f"{server.rstrip('/')}/{key}"
-    else:
-        url = f"https://api.day.app/{key}"
-
-    body = {"title": title, "body": content}
-    logger.debug("Bark 推送 -> %s", url)
-
-    try:
-        resp = requests.post(url, json=body, timeout=(5, 10))
-        data = resp.json()
-    except requests.RequestException:
-        logger.exception("Bark 推送网络异常")
-        return False
-    except json.JSONDecodeError:
-        logger.error("Bark 响应解析失败: %s", resp.text[:200])
-        return False
-
-    if data.get("code") == 200:
-        logger.info("Bark 推送成功")
-        return True
-    else:
-        logger.error("Bark 推送失败: %s", data)
-        return False
-
-
-@register_channel
-def _dingtalk_push(title: str, content: str, config: dict) -> bool:
-    """钉钉机器人推送。
-
-    配置项：push.dd_bot_token / push.dd_bot_secret
-    文档：https://open.dingtalk.com/document/robots/custom-robot-access
-    """
-    token = config.get("dd_bot_token", "")
-    secret = config.get("dd_bot_secret", "")
-    if not token or not secret:
-        return False
-
-    timestamp = str(round(_time.time() * 1000))
-    sign_str = f"{timestamp}\n{secret}"
-    sign = urllib.parse.quote_plus(
-        base64.b64encode(hmac.new(
-            secret.encode("utf-8"),
-            sign_str.encode("utf-8"),
-            digestmod=hashlib.sha256,
-        ).digest())
-    )
-    url = (
-        f"https://oapi.dingtalk.com/robot/send"
-        f"?access_token={token}&timestamp={timestamp}&sign={sign}"
-    )
-    body = {"msgtype": "text", "text": {"content": f"{title}\n\n{content}"}}
-    logger.debug("钉钉机器人 推送")
-
-    try:
-        resp = requests.post(url, json=body, timeout=(5, 10))
-        data = resp.json()
-    except requests.RequestException:
-        logger.exception("钉钉机器人 推送网络异常")
-        return False
-    except json.JSONDecodeError:
-        logger.error("钉钉机器人 响应解析失败: %s", resp.text[:200])
-        return False
-
-    if data.get("errcode") == 0:
-        logger.info("钉钉机器人 推送成功")
-        return True
-    else:
-        logger.error("钉钉机器人 推送失败: %s", data.get("errmsg", "未知"))
-        return False
-
-
-@register_channel
-def _feishu_push(title: str, content: str, config: dict) -> bool:
-    """飞书机器人推送。
-
-    配置项：push.fs_key
-    文档：https://open.feishu.cn/document/ukTMukTMukTM/ucTM5YjL3ETO24yNxkjN
-    """
-    key = config.get("fs_key", "")
-    if not key:
-        return False
-
-    url = f"https://open.feishu.cn/open-apis/bot/v2/hook/{key}"
-    body = {"msg_type": "text", "content": {"text": f"{title}\n\n{content}"}}
-    logger.debug("飞书 推送")
-
-    try:
-        resp = requests.post(url, json=body, timeout=(5, 10))
-        data = resp.json()
-    except requests.RequestException:
-        logger.exception("飞书 推送网络异常")
-        return False
-    except json.JSONDecodeError:
-        logger.error("飞书 响应解析失败: %s", resp.text[:200])
-        return False
-
-    if data.get("StatusCode") == 0 or data.get("code") == 0:
-        logger.info("飞书 推送成功")
-        return True
-    else:
-        logger.error("飞书 推送失败: %s", data)
-        return False
-
-
-@register_channel
-def _telegram_push(title: str, content: str, config: dict) -> bool:
-    """Telegram Bot 推送。
-
-    配置项：push.tg_bot_token / push.tg_user_id
-    文档：https://core.telegram.org/bots/api
-    """
-    token = config.get("tg_bot_token", "")
-    user_id = config.get("tg_user_id", "")
-    if not token or not user_id:
-        return False
-
-    url = f"https://api.telegram.org/bot{token}/sendMessage"
-    params = {
-        "chat_id": str(user_id),
-        "text": f"{title}\n\n{content}",
-        "disable_web_page_preview": "true",
-    }
-    logger.debug("Telegram 推送 -> chat_id=%s", user_id)
-
-    try:
-        resp = requests.post(url, params=params, timeout=(5, 10))
-        data = resp.json()
-    except requests.RequestException:
-        logger.exception("Telegram 推送网络异常")
-        return False
-    except json.JSONDecodeError:
-        logger.error("Telegram 响应解析失败: %s", resp.text[:200])
-        return False
-
-    if data.get("ok"):
-        logger.info("Telegram 推送成功")
-        return True
-    else:
-        logger.error("Telegram 推送失败: %s", data.get("description", "未知"))
-        return False
-
-
 # ========== 公共接口 ==========
 
 def _fetch_hitokoto() -> str:
@@ -342,7 +95,7 @@ def _fetch_hitokoto() -> str:
 
 
 def send(title: str, content: str, config: dict = None) -> None:
-    """推送消息到所有已配置的渠道（多线程并发）。
+    """推送消息到所有已配置的渠道。
 
     Args:
         title: 推送标题
@@ -371,27 +124,13 @@ def send(title: str, content: str, config: dict = None) -> None:
     logger.info("推送标题: %s", title)
     logger.info("推送内容:\n%s", content)
 
-    # 多线程并发推送所有渠道
-    def _run_channel(ch):
-        t0 = _time.time()
-        try:
-            ok = ch(title, content, config)
-            elapsed = (_time.time() - t0) * 1000
-            if ok:
-                logger.debug("%s 成功，耗时 %.0fms", ch.__name__, elapsed)
-            return ok
-        except Exception:
-            elapsed = (_time.time() - t0) * 1000
-            logger.exception("%s 异常，耗时 %.0fms", ch.__name__, elapsed)
-            return False
-
-    max_workers = min(len(_channels), 7)
     success_count = 0
-    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = {executor.submit(_run_channel, ch): ch for ch in _channels}
-        for future in concurrent.futures.as_completed(futures):
-            if future.result():
+    for channel in _channels:
+        try:
+            if channel(title, content, config):
                 success_count += 1
+        except Exception:
+            logger.exception("推送渠道 %s 异常", channel.__name__)
 
     if success_count == 0:
         logger.warning("所有推送渠道均未成功（可能未配置或全部失败）")
