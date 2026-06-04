@@ -8,3 +8,5 @@ notify.py
 __pycache__/
 *.pyc
 *.pyo
+roco-merchant.json
+.claude/CLAUDE.md

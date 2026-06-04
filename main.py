@@ -22,10 +22,11 @@ def build_message(processed: dict) -> str:
     round_info = processed.get("round_info", {})
     products = processed.get("products", [])
 
-    now_str = get_beijing_time().strftime("%Y-%m-%d %H:%M:%S")
+    now_str = get_beijing_time().strftime("%Y-%m-%d %H:%M")
 
     lines = [
         f"北京时间: {now_str}",
+        f"",
         f"第 {round_info.get('current', '?')}/{round_info.get('total', '?')} 轮 "
         f"| 剩余 {round_info.get('countdown', '未知')}",
         "",
