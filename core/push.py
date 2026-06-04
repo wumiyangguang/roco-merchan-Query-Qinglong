@@ -126,6 +126,10 @@ def send(title: str, content: str, config: dict = None) -> None:
         logger.warning("无可用推送渠道")
         return
 
+    # 打印推送信息到日志
+    logger.info("推送标题: %s", title)
+    logger.info("推送内容:\n%s", content)
+
     success_count = 0
     for channel in _channels:
         try:
