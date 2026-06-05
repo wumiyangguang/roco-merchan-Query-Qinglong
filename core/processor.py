@@ -65,28 +65,6 @@ def _calc_remaining_str(end_ms: int, now_ms: int) -> str:
     return "".join(parts)
 
 
-def _get_category(end_ms: int, now_ms: int) -> str:
-    """根据结束时间判定分类：本轮限定 / 多轮持续 / 跨日有效。"""
-    now_dt = datetime.fromtimestamp(now_ms / 1000, tz=timezone(timedelta(hours=8)))
-
-    # 当天最后一刻（23:59:59.999）
-    today_end = now_dt.replace(hour=23, minute=59, second=59, microsecond=999999)
-    today_end_ms = int(today_end.timestamp() * 1000)
-
-    # 当前轮次结束时间（08:00 起每 4 小时一轮）
-    start_of_day = now_dt.replace(hour=8, minute=0, second=0, microsecond=0)
-    delta_seconds = int((now_dt - start_of_day).total_seconds())
-    round_index = min(max((delta_seconds // (4 * 3600)) + 1, 1), 4)
-    round_end = start_of_day + timedelta(hours=round_index * 4)
-    round_end_ms = int(round_end.timestamp() * 1000)
-
-    if end_ms <= round_end_ms:
-        return "本轮限定"
-    elif end_ms <= today_end_ms:
-        return "多轮持续"
-    else:
-        return "跨日有效"
-
 
 def process_merchant_data(data: dict) -> dict:
     if not data:
@@ -174,18 +152,11 @@ def process_merchant_data(data: dict) -> dict:
 
     logger.debug("商品总数: %d, 活跃商品: %d", len(all_products), len(active_products))
 
-    # ========== 构建分类分组（仅从 get_props 获取）==========
-    categorized = {
-        "本轮限定": {},
-        "多轮持续": {},
-        "跨日有效": {},
-    }
-
+    # ========== 构建活跃道具列表（仅从 get_props，按结束时间排序）==========
+    get_props_items = []
     for item in (activity.get("get_props") or []):
         if not isinstance(item, dict):
             continue
-
-        goods_meta = goods_meta_by_name.get(str(item.get("name", "")).strip(), {})
 
         s_time = item.get("start_time") or activity.get("start_time")
         e_time = item.get("end_time") or activity.get("end_time")
@@ -198,31 +169,26 @@ def process_merchant_data(data: dict) -> dict:
         if not (start_ms <= now_ms < end_ms):
             continue
 
-        price = item.get("price") if item.get("price") not in (None, "") else goods_meta.get("price")
-
-        product = {
+        get_props_items.append({
             "name": item.get("name", "未知商品"),
-            "price": price,
-        }
+            "end_ms": end_ms,
+            "remaining_str": _calc_remaining_str(end_ms, now_ms),
+        })
 
-        cat = _get_category(end_ms, now_ms)
-        categorized[cat].setdefault(end_ms, []).append(product)
+    # 按结束时间升序排列
+    get_props_items.sort(key=lambda x: x["end_ms"])
 
+    # 去重：同时间段的同名商品合并，后缀标注剩余时间
     active_groups = []
-    for cat_name in ["本轮限定", "多轮持续", "跨日有效"]:
-        cat_groups = categorized.get(cat_name, {})
-        if not cat_groups:
+    seen_keys = set()
+    for p in get_props_items:
+        key = (p["name"], p["end_ms"])
+        if key in seen_keys:
             continue
-        groups = []
-        for end_ms in sorted(cat_groups):
-            prods = cat_groups[end_ms]
-            groups.append({
-                "remaining_str": _calc_remaining_str(end_ms, now_ms),
-                "products": prods,
-            })
+        seen_keys.add(key)
         active_groups.append({
-            "category": cat_name,
-            "groups": groups,
+            "name": p["name"],
+            "remaining_str": p["remaining_str"],
         })
 
     today = datetime.fromtimestamp(now_ms / 1000, tz=timezone(timedelta(hours=8))).strftime("%Y-%m-%d")

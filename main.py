@@ -33,30 +33,8 @@ def build_message(processed: dict) -> str:
     ]
 
     if active_groups:
-        for cat_group in active_groups:
-            category = cat_group["category"]
-            for group in cat_group["groups"]:
-                names = []
-                for p in group["products"]:
-                    name = p["name"]
-                    price = p.get("price")
-                    if price is not None and price != "":
-                        names.append(f"{name}({price}金币)")
-                    else:
-                        names.append(name)
-
-                if category == "本轮限定":
-                    # 本轮限定不显示剩余时间（轮次倒计时已在上方展示），每商品独立一行
-                    lines.append(f"【{category}】")
-                    for name in names:
-                        lines.append(f"  {name}")
-                else:
-                    # 剩余时间标注在分类标题右侧，商品分行展示
-                    lines.append(f"【{category}】剩余{group['remaining_str']}")
-                    for name in names:
-                        lines.append(f"  {name}")
-            # 分类之间插入空行
-            lines.append("")
+        for p in active_groups:
+            lines.append(f"  {p['name']}（剩余{p['remaining_str']}）")
     else:
         lines.append("当前暂无商品")
 
